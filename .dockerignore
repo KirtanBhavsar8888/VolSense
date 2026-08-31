@@ -1,0 +1,17 @@
+.git
+.venv
+__pycache__
+*.pyc
+.cache
+.pytest_cache
+.env
+*.db
+node_modules
+frontend
+reports
+design_ref
+eval
+tests
+*.ipynb
+*.txt
+!requirements.txt
