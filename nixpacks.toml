@@ -1,2 +1,2 @@
 [phases.setup]
-nixPkgs = ["cmake", "gcc", "g++"]
+aptPkgs = ["cmake", "gcc", "g++"]
