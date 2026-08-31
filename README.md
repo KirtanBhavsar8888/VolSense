@@ -1,5 +1,7 @@
 # Nifty Options Skew Research Agent
 
+**Live deployment:** [https://vol-sense-ea7z-gilt.vercel.app/login](https://vol-sense-ea7z-gilt.vercel.app/login)
+
 This project builds a deterministic research pipeline for Nifty option-chain skew analysis. It combines a calc layer, verification gate, baseline LLM response, tool-using analysis agent, memory layer, reporting, and evaluation harness.
 
 ## What is included
