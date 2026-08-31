@@ -69,6 +69,17 @@ def startup():
     logger.info("Database initialized")
 
 
+@app.get("/")
+def root():
+    """Root endpoint — confirms the API is live."""
+    return {
+        "service": "VolSense API",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "health": "/health",
+    }
+
+
 @app.get("/health")
 def health_check():
     """Health check endpoint."""
