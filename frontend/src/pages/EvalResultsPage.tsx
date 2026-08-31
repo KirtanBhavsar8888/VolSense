@@ -4,8 +4,7 @@ import { animate } from 'animejs'
 
 import { DashboardShell } from '../components/dashboard/DashboardShell'
 import type { EvalCaseResult, EvalCheckResult } from '../types/app'
-
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+import { API_BASE } from '../config'
 
 type SessionEvaluation = {
   session_id: string

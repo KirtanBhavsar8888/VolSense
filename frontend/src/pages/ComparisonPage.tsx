@@ -6,8 +6,7 @@ import { ChevronDown, ChevronRight, Clock, CheckCircle, XCircle } from 'lucide-r
 import { DashboardShell } from '../components/dashboard/DashboardShell'
 import { ComparisonPanel } from '../components/dashboard/ComparisonPanel'
 import type { ComparisonRun } from '../types/app'
-
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+import { API_BASE } from '../config'
 
 type SessionComparison = {
   session_id: string

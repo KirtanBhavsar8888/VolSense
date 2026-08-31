@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { DashboardShell } from '../components/dashboard/DashboardShell'
 import { animate, stagger } from 'animejs'
 
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+import { API_BASE } from '../config'
 
 type TradeLogEntry = {
   timestamp: string

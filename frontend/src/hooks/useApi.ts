@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import type { DashboardSessionData, EvaluationRow, SkewPoint, TrajectoryStep } from '../types/app'
-
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+import { API_BASE } from '../config'
 
 type SessionPayload = {
   session_id: string
