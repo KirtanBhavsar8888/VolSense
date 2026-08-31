@@ -16,4 +16,6 @@ COPY src/ src/
 
 EXPOSE 8000
 
-CMD ["uvicorn", "src.api.server:app", "--host", "0.0.0.0", "--port", "8000"]
+# Use shell form so $PORT is expanded by the shell.
+# Railway injects $PORT at runtime; fall back to 8000 for local runs.
+CMD uvicorn src.api.server:app --host 0.0.0.0 --port ${PORT:-8000}
