@@ -2,8 +2,14 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from scipy.optimize import brentq
-from scipy.stats import norm
+
+try:
+    from scipy.optimize import brentq
+    from scipy.stats import norm
+except ImportError:  # scipy is optional — needed only for IV calculations
+    brentq = None  # type: ignore[assignment]
+    norm = None  # type: ignore[assignment]
+
 
 
 def _normalize_flag(flag: object) -> float:
@@ -15,6 +21,8 @@ def _normalize_flag(flag: object) -> float:
 
 def bs_price(F: float, K: float, T: float, r: float, sigma: float, flag: object) -> float:
     """European Black-Scholes price using forward F as the underlying."""
+    if norm is None:
+        raise ImportError("scipy is required for IV calculations. Install it: pip install scipy")
     if T <= 0 or sigma <= 0:
         return np.nan
     flag_value = _normalize_flag(flag)
