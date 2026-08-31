@@ -11,11 +11,14 @@ RUN apt-get update && \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy entrypoint script
+COPY entrypoint.sh .
+RUN chmod +x entrypoint.sh
+
 # Copy source code and data
 COPY src/ src/
 COPY OPTIONS_DATA/ OPTIONS_DATA/
 
 EXPOSE 8000
 
-# exec form + /bin/sh -c expands $PORT at runtime
-CMD ["/bin/sh", "-c", "uvicorn src.api.server:app --host 0.0.0.0 --port ${PORT:-8000}"]
+ENTRYPOINT ["./entrypoint.sh"]
