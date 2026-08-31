@@ -1,0 +1,486 @@
+===== CELL 21 =====
+RISK_FREE_RATE = 0.065   # 6.5% annualised
+
+# ── 3.1  Compute DTE and T ────────────────────────────────────
+df_near['dte'] = (df_near['expiry'] - df_near['timestamp'].dt.normalize()).dt.days
+df_near['T']   = df_near['dte'] / 365.0
+
+# ── 3.2  Pivot to get CE and PE side by side per strike ───────
+# Only use liquid contracts for parity computation
+liquid = df_near[~df_near['illiquid']].copy()
+
+pivot = liquid.pivot_table(
+    index=['timestamp', 'expiry', 'strike', 'dte', 'T'],
+    columns='option_type',
+    values='ltp',
+    aggfunc='first'
+)
+pivot.columns.name = None
+pivot.reset_index(inplace=True)
+
+# Keep only strikes where both CE and PE are present
+pivot = pivot.dropna(subset=['CE', 'PE'])
+
+print(f"Liquid CE+PE pairs : {len(pivot):,}")
+print(f"Sample:\n{pivot[['timestamp','strike','CE','PE','T']].head(8).to_string(index=False)}")
+
+===== CELL 22 =====
+# ── 3.3  Synthetic future per strike ─────────────────────────
+pivot['synth_F'] = (pivot['CE'] - pivot['PE']) * np.exp(RISK_FREE_RATE * pivot['T']) + pivot['strike']
+
+# Sanity check: synth_F should be positive and in a reasonable range
+print(f"\nSynthetic future per strike:")
+print(f"  Min : {pivot['synth_F'].min():.2f}")
+print(f"  Max : {pivot['synth_F'].max():.2f}")
+print(f"  Mean: {pivot['synth_F'].mean():.2f}")
+
+# Flag extreme outliers per timestamp (synth_F too far from median)
+pivot['synth_median_ts'] = pivot.groupby('timestamp')['synth_F'].transform('median')
+pivot['synth_dev_pct']   = ((pivot['synth_F'] - pivot['synth_median_ts']) / pivot['synth_median_ts'] * 100).abs()
+
+outlier_threshold = 1.0   # % deviation from median
+outliers = pivot[pivot['synth_dev_pct'] > outlier_threshold]
+print(f"\nOutlier CE+PE pairs (>1% from median): {len(outliers):,}  ({100*len(outliers)/len(pivot):.1f}%)")
+print("These are excluded before taking consensus median.")
+
+# Exclude outlier strikes before consensus
+pivot_clean = pivot[pivot['synth_dev_pct'] <= outlier_threshold]
+
+===== CELL 23 =====
+# ── 3.4  Consensus synthetic future = median per timestamp ────
+synth_ts = (pivot_clean.groupby('timestamp')
+            .agg(
+                synth_future   = ('synth_F', 'median'),
+                n_strikes_used = ('synth_F', 'count'),
+                synth_q25      = ('synth_F', lambda x: x.quantile(0.25)),
+                synth_q75      = ('synth_F', lambda x: x.quantile(0.75)),
+                dte            = ('dte', 'first'),
+            )
+            .reset_index())
+
+print(f"Timestamps with synthetic future: {len(synth_ts):,}")
+print(synth_ts[['timestamp','synth_future','n_strikes_used']].head(10).to_string(index=False))
+
+# Merge back onto df_near
+df_near = df_near.merge(synth_ts[['timestamp','synth_future','n_strikes_used']],
+                        on='timestamp', how='left')
+
+===== CELL 24 =====
+# ── 3.5  Validate: 1-minute jumps in synthetic future ─────────
+synth_sorted = synth_ts.sort_values('timestamp').copy()
+synth_sorted['synth_pct_chg'] = synth_sorted['synth_future'].pct_change() * 100
+
+print("=== Largest 1-min synthetic future jumps ===")
+print(synth_sorted.nlargest(5, 'synth_pct_chg')
+      [['timestamp','synth_future','synth_pct_chg','n_strikes_used']].to_string(index=False))
+
+print("\n=== Most negative 1-min jumps ===")
+print(synth_sorted.nsmallest(5, 'synth_pct_chg')
+      [['timestamp','synth_future','synth_pct_chg','n_strikes_used']].to_string(index=False))
+
+# Flag suspicious jumps > 0.5% in 1 min (index options, not individual stocks)
+suspicious = synth_sorted[synth_sorted['synth_pct_chg'].abs() > 0.5]
+print(f"\nSuspicious jumps (|Δ%| > 0.5% in 1 min): {len(suspicious)}")
+if len(suspicious):
+    print(suspicious[['timestamp','synth_future','synth_pct_chg']].to_string(index=False))
+    print("→ Could be stale quote refresh, news event, or data gap. Inspect manually.")
+
+===== CELL 25 =====
+# ── 3.6  IQR spread check (consensus quality) ─────────────────
+synth_ts['iqr'] = synth_ts['synth_q75'] - synth_ts['synth_q25']
+wide_iqr = synth_ts[synth_ts['iqr'] > 10]   # >10pt spread across strikes = noisy
+print(f"Timestamps with IQR > 10pt across strikes: {len(wide_iqr)}")
+print(f"Median IQR across all timestamps: {synth_ts['iqr'].median():.2f} pts")
+print(f"\n✓ synth_future column added to df_near")
+print(f"  Missing synth_future: {df_near['synth_future'].isna().sum()}")
+
+===== CELL 29 =====
+from scipy.stats import norm
+from scipy.optimize import brentq
+
+# ── 4.1  Black-Scholes functions ──────────────────────────────
+def bs_price(F, K, T, r, sigma, flag):
+    """European BS price using forward F as underlying."""
+    if T <= 0 or sigma <= 0:
+        return np.nan
+    d1 = (np.log(F / K) + 0.5 * sigma**2 * T) / (sigma * np.sqrt(T))
+    d2 = d1 - sigma * np.sqrt(T)
+    if flag == 'c':
+        return np.exp(-r * T) * (F * norm.cdf(d1) - K * norm.cdf(d2))
+    else:
+        return np.exp(-r * T) * (K * norm.cdf(-d2) - F * norm.cdf(-d1))
+
+def bs_delta(F, K, T, r, sigma, flag):
+    """Forward delta: dV/dF."""
+    if T <= 0 or sigma <= 0 or np.isnan(sigma):
+        return np.nan
+    d1 = (np.log(F / K) + 0.5 * sigma**2 * T) / (sigma * np.sqrt(T))
+    if flag == 'c':
+        return norm.cdf(d1)
+    else:
+        return norm.cdf(d1) - 1.0
+
+def compute_iv(ltp, F, K, T, r, flag, tol=1e-6):
+    """Implied vol via Brent's method. Returns NaN on any failure."""
+    if T <= 0 or np.isnan(ltp) or ltp <= 0 or np.isnan(F) or F <= 0:
+        return np.nan
+    # Intrinsic value check — market price must exceed intrinsic
+    intrinsic = max(np.exp(-r * T) * (F - K if flag == 'c' else K - F), 0)
+    if ltp < intrinsic - tol:
+        return np.nan
+    try:
+        obj = lambda sigma: bs_price(F, K, T, r, sigma, flag) - ltp
+        lo, hi = obj(1e-4), obj(10.0)
+        if lo * hi > 0:
+            return np.nan   # root not bracketed
+        return brentq(obj, 1e-4, 10.0, xtol=tol, maxiter=300)
+    except Exception:
+        return np.nan
+
+# ── Self-test ─────────────────────────────────────────────────
+F_test, K_test, T_test = 16493, 16493, 7/365
+sigma_test = 0.18
+price_test = bs_price(F_test, K_test, T_test, 0.065, sigma_test, 'c')
+iv_rt      = compute_iv(price_test, F_test, K_test, T_test, 0.065, 'c')
+delta_test = bs_delta(F_test, K_test, T_test, 0.065, sigma_test, 'c')
+print(f"Self-test ATM call price : {price_test:.4f}")
+print(f"Round-trip IV            : {iv_rt:.6f}  (input={sigma_test})  diff={abs(iv_rt-sigma_test):.2e}")
+print(f"ATM call delta           : {delta_test:.4f}  (expect ~0.52–0.55)")
+assert abs(iv_rt - sigma_test) < 1e-5, "IV round-trip FAILED"
+print("✓ Self-test passed")
+
+===== CELL 30 =====
+# ── 4.2  Prepare compute set ──────────────────────────────────
+# Exclude: illiquid, missing synth_future, DTE=0 with T floored
+T_FLOOR = 0.5 / 365   # 0.5 calendar day minimum — avoids solver blow-up on expiry day
+
+compute_mask = (
+    (~df_near['illiquid']) &
+    (df_near['synth_future'].notna()) &
+    (df_near['ltp'] > 0)
+)
+work = df_near[compute_mask].copy()
+work['T_adj'] = work['dte'].clip(lower=0.5) / 365   # floored T for solver
+work['flag']  = work['option_type'].map({'CE': 'c', 'PE': 'p'})
+
+print(f"Total rows in df_near  : {len(df_near):,}")
+print(f"Rows sent to IV solver : {len(work):,}")
+print(f"Skipped (illiquid/null): {len(df_near) - len(work):,}")
+
+===== CELL 31 =====
+# ── 4.3  Compute IV and Delta (VECTORISED — fast) ─────────────
+from scipy.stats import norm
+import numpy as np
+
+def vectorised_iv(ltp, F, K, T, r, flag, n_iter=50):
+    """
+    Fast IV via Newton-Raphson vectorised across arrays.
+    Falls back to NaN where it doesn't converge.
+    flag: array of 1 (call) or -1 (put)
+    """
+    # Initial guess: Brenner-Subrahmanyam approximation
+    sigma = np.sqrt(2 * np.pi / T) * ltp / F
+    sigma = np.clip(sigma, 0.01, 5.0)
+
+    for _ in range(n_iter):
+        d1 = (np.log(F / K) + 0.5 * sigma**2 * T) / (sigma * np.sqrt(T))
+        d2 = d1 - sigma * np.sqrt(T)
+
+        # BS price
+        price = np.exp(-r * T) * (
+            flag * (F * norm.cdf(flag * d1) - K * norm.cdf(flag * d2))
+        )
+
+        # Vega (same for call and put)
+        vega = F * np.exp(-r * T) * norm.pdf(d1) * np.sqrt(T)
+        vega = np.where(vega < 1e-10, 1e-10, vega)   # avoid divide by zero
+
+        diff = price - ltp
+        sigma = sigma - diff / vega
+        sigma = np.clip(sigma, 1e-4, 10.0)
+
+    # Mark failed convergence as NaN
+    d1   = (np.log(F / K) + 0.5 * sigma**2 * T) / (sigma * np.sqrt(T))
+    d2   = d1 - sigma * np.sqrt(T)
+    final_price = np.exp(-r * T) * (
+        flag * (F * norm.cdf(flag * d1) - K * norm.cdf(flag * d2))
+    )
+    bad = (np.abs(final_price - ltp) > 0.5) | np.isnan(sigma) | (ltp <= 0) | (F <= 0)
+    sigma[bad] = np.nan
+
+    return sigma
+
+def vectorised_delta(F, K, T, r, sigma, flag):
+    """Vectorised BS forward delta."""
+    valid = ~np.isnan(sigma) & (T > 0) & (sigma > 0)
+    d1    = np.where(
+        valid,
+        (np.log(F / K) + 0.5 * sigma**2 * T) / (sigma * np.sqrt(T)),
+        np.nan
+    )
+    return np.where(valid, norm.cdf(flag * d1) * flag + np.where(flag == -1, -1, 0) + np.where(flag == 1, 0, 0), np.nan)
+
+# cleaner delta formula
+def vectorised_delta(F, K, T, r, sigma, flag):
+    valid = ~np.isnan(sigma) & (T > 0) & (sigma > 0)
+    d1 = np.full(len(F), np.nan)
+    d1[valid] = ((np.log(F[valid] / K[valid]) + 0.5 * sigma[valid]**2 * T[valid])
+                 / (sigma[valid] * np.sqrt(T[valid])))
+    delta = np.full(len(F), np.nan)
+    call_mask = valid & (flag == 1)
+    put_mask  = valid & (flag == -1)
+    delta[call_mask] = norm.cdf(d1[call_mask])
+    delta[put_mask]  = norm.cdf(d1[put_mask]) - 1.0
+    return delta
+
+# ── Apply ─────────────────────────────────────────────────────
+print("Computing IV and delta (vectorised)...")
+
+ltp_arr  = work['ltp'].values.astype(float)
+F_arr    = work['synth_future'].values.astype(float)
+K_arr    = work['strike'].values.astype(float)
+T_arr    = work['T_adj'].values.astype(float)
+flag_arr = np.where(work['flag'].values == 'c', 1.0, -1.0)
+
+# Pre-filter: drop intrinsic violations before passing to solver
+intrinsic = np.exp(-RISK_FREE_RATE * T_arr) * np.maximum(flag_arr * (F_arr - K_arr), 0)
+bad_price = ltp_arr < (intrinsic - 0.5)   # 0.5 INR tolerance
+ltp_arr[bad_price] = np.nan               # solver will return NaN for these
+
+ivs    = vectorised_iv(ltp_arr, F_arr, K_arr, T_arr, RISK_FREE_RATE, flag_arr)
+deltas = vectorised_delta(F_arr, K_arr, T_arr, RISK_FREE_RATE, ivs, flag_arr)
+
+work['iv']    = ivs
+work['delta'] = deltas
+
+print(f"✓ Done")
+print(f"IV computed successfully : {np.sum(~np.isnan(ivs)):,}")
+print(f"IV solver failures       : {np.sum(np.isnan(ivs)):,}  ({100*np.mean(np.isnan(ivs)):.1f}%)")
+
+# ── Merge back ────────────────────────────────────────────────
+df_near = df_near.merge(
+    work[['timestamp', 'strike', 'option_type', 'iv', 'delta']],
+    on=['timestamp', 'strike', 'option_type'],
+    how='left'
+)
+print(f"df_near shape : {df_near.shape}")
+print(f"Rows with valid IV : {df_near['iv'].notna().sum():,}")
+
+===== CELL 32 =====
+# ── 4.4  Validation ───────────────────────────────────────────
+iv_valid = df_near[df_near['iv'].notna()]
+
+print("=== IV Validation ===")
+print(f"IV range : [{iv_valid['iv'].min():.4f}, {iv_valid['iv'].max():.4f}]")
+print(f"IV < 2%  (suspect low)  : {(iv_valid['iv'] < 0.02).sum():,}")
+print(f"IV > 200% (suspect high): {(iv_valid['iv'] > 2.0).sum():,}")
+print(iv_valid['iv'].describe().round(4))
+
+print("\n=== Delta Validation ===")
+call_delta = iv_valid[iv_valid['option_type'] == 'CE']['delta']
+put_delta  = iv_valid[iv_valid['option_type'] == 'PE']['delta']
+
+print(f"Call delta range : [{call_delta.min():.4f}, {call_delta.max():.4f}]  (expect 0 to 1)")
+print(f"Put  delta range : [{put_delta.min():.4f}, {put_delta.max():.4f}]  (expect -1 to 0)")
+
+print(f"\nCall delta out of (0,1)  : {((call_delta < 0) | (call_delta > 1)).sum()}")
+print(f"Put  delta out of (-1,0) : {((put_delta > 0) | (put_delta < -1)).sum()}")
+
+===== CELL 33 =====
+# ── 4.5  Monotonicity check ───────────────────────────────────
+# Call delta must decrease as strike increases (higher strike = lower delta)
+# Check for a sample of timestamps
+
+sample_timestamps = df_near['timestamp'].drop_duplicates().sample(20, random_state=42)
+
+mono_pass = 0
+mono_fail = 0
+for ts in sample_timestamps:
+    sub = (df_near[(df_near['timestamp'] == ts) &
+                   (df_near['option_type'] == 'CE') &
+                   (df_near['delta'].notna())]
+           .sort_values('strike'))
+    if len(sub) < 2:
+        continue
+    if (sub['delta'].diff().dropna() <= 0).all():
+        mono_pass += 1
+    else:
+        mono_fail += 1
+
+print(f"Delta monotonicity (call delta decreasing in K):")
+print(f"  Pass : {mono_pass}/20")
+print(f"  Fail : {mono_fail}/20")
+if mono_fail > 0:
+    print("  → Failures likely at far OTM strikes with stale quotes — acceptable")
+
+print(f"\n✓ df_near now has 'iv' and 'delta' columns")
+print(f"  Rows with valid IV    : {df_near['iv'].notna().sum():,}")
+print(f"  Rows without valid IV : {df_near['iv'].isna().sum():,}")
+
+===== CELL 38 =====
+bad_iv_mask = (df_near['iv'] < 0.005) & (df_near['delta'].abs() > 0.95)
+print(f"Bad IV rows to remove: {bad_iv_mask.sum()}")
+df_near.loc[bad_iv_mask, ['iv','delta']] = np.nan
+
+===== CELL 39 =====
+TARGET_DELTA  = 0.25
+DELTA_MIN_CE  = 0.05    # ignore call deltas below this (deep OTM, noisy)
+DELTA_MAX_CE  = 0.90    # ignore call deltas above this (deep ITM, non-monotone)
+DELTA_MIN_PE  = 0.05    # ignore put |delta| below this
+DELTA_MAX_PE  = 0.90    # ignore put |delta| above this
+
+===== CELL 40 =====
+def interp_iv_25delta(sub, option_type):
+    """
+    Interpolate IV at 25-delta using 3-strike linear interpolation.
+    sub: DataFrame with columns strike, iv, delta
+    """
+    sub = sub.dropna(subset=['iv','delta']).copy()
+    sub['abs_delta'] = sub['delta'].abs()
+
+    if option_type == 'CE':
+        # Filter: only OTM-ish calls (delta 0.10 to 0.50 range around target)
+        # Wider window to ensure we have enough strikes
+        sub = sub[(sub['abs_delta'] >= 0.10) & (sub['abs_delta'] <= 0.50)]
+        sub = sub.sort_values('abs_delta')   # sort by delta ascending
+        # Monotonicity: delta should increase smoothly — drop non-monotone
+        sub = sub.drop_duplicates('abs_delta')
+
+    else:
+        # Filter: put |delta| 0.10 to 0.50
+        sub = sub[(sub['abs_delta'] >= 0.10) & (sub['abs_delta'] <= 0.50)]
+        sub = sub.sort_values('abs_delta')
+        sub = sub.drop_duplicates('abs_delta')
+
+    if len(sub) < 2:
+        return np.nan
+
+    abs_deltas = sub['abs_delta'].values
+    ivs_arr    = sub['iv'].values
+
+    # Check target is within available range (no extrapolation)
+    if TARGET_DELTA < abs_deltas.min() or TARGET_DELTA > abs_deltas.max():
+        return np.nan
+
+    # Find bracketing indices
+    idx_hi = np.searchsorted(abs_deltas, TARGET_DELTA, side='right')
+    idx_lo = idx_hi - 1
+
+    if idx_lo < 0 or idx_hi >= len(abs_deltas):
+        return np.nan
+
+    # Build 3-strike window
+    if idx_lo >= 1:
+        idxs = [idx_lo - 1, idx_lo, idx_hi]
+    elif idx_hi + 1 < len(abs_deltas):
+        idxs = [idx_lo, idx_hi, idx_hi + 1]
+    else:
+        idxs = [idx_lo, idx_hi]   # fallback to 2-point linear
+
+    x = abs_deltas[idxs]
+    y = ivs_arr[idxs]
+
+    # Linear interpolation
+    coeffs    = np.polyfit(x, y, deg=1)
+    iv_interp = np.polyval(coeffs, TARGET_DELTA)
+
+    # Sanity check: result must be within 20% of anchor IV range
+    if not (min(y) * 0.80 <= iv_interp <= max(y) * 1.20):
+        return np.nan
+
+    return float(iv_interp)
+
+===== CELL 41 =====
+# ── 5.2  Apply per timestamp (VECTORISED) ─────────────────────
+
+def interp_iv_25delta_group(grp, option_type):
+    sub = grp[grp['option_type'] == option_type][['strike', 'iv', 'delta']].copy()
+    return interp_iv_25delta(sub, option_type)
+
+valid_iv = df_near[df_near['iv'].notna() & df_near['delta'].notna()].copy()
+
+print("Computing 25Δ CE IV...")
+ce_iv = (valid_iv[valid_iv['option_type'] == 'CE']
+         .groupby('timestamp')
+         .apply(lambda g: interp_iv_25delta(g[['strike','iv','delta']], 'CE'))
+         .rename('iv_25d_CE'))
+
+print("Computing 25Δ PE IV...")
+pe_iv = (valid_iv[valid_iv['option_type'] == 'PE']
+         .groupby('timestamp')
+         .apply(lambda g: interp_iv_25delta(g[['strike','iv','delta']], 'PE'))
+         .rename('iv_25d_PE'))
+
+skew_df = pd.concat([ce_iv, pe_iv], axis=1).reset_index()
+skew_df['skew_25d'] = skew_df['iv_25d_PE'] - skew_df['iv_25d_CE']
+skew_df = skew_df.sort_values('timestamp').reset_index(drop=True)
+
+print(f"Total timestamps       : {len(skew_df):,}")
+print(f"Valid skew (both legs) : {skew_df['skew_25d'].notna().sum():,}")
+print(f"Missing CE 25d IV      : {skew_df['iv_25d_CE'].isna().sum():,}")
+print(f"Missing PE 25d IV      : {skew_df['iv_25d_PE'].isna().sum():,}")
+
+===== CELL 42 =====
+# ── 5.3  Validation: basic range checks ──────────────────────
+skew_valid = skew_df.dropna(subset=['skew_25d'])
+
+print("=== Skew Validation ===")
+print(f"Skew range : [{skew_valid['skew_25d'].min():.4f}, {skew_valid['skew_25d'].max():.4f}]")
+print(f"Mean skew  : {skew_valid['skew_25d'].mean():.4f}")
+print(f"Median skew: {skew_valid['skew_25d'].median():.4f}")
+print(f"\nNegative skew (unusual) : {(skew_valid['skew_25d'] < 0).sum()} timestamps")
+print(f"Skew > 0.15 (elevated)  : {(skew_valid['skew_25d'] > 0.15).sum()} timestamps")
+print(f"Skew > 0.25 (extreme)   : {(skew_valid['skew_25d'] > 0.25).sum()} timestamps")
+
+===== CELL 43 =====
+# ── 5.4  Anomaly detection: spikes ────────────────────────────
+skew_df['skew_chg'] = skew_df['skew_25d'].diff().abs()
+
+SPIKE_THRESHOLD = 0.05   # 5 vol points move in 1 minute = suspicious
+spikes = skew_df[skew_df['skew_chg'] > SPIKE_THRESHOLD]
+
+print(f"=== Anomaly Summary ===")
+print(f"1-min skew spikes (|Δ| > {SPIKE_THRESHOLD}): {len(spikes)}")
+if len(spikes):
+    print(spikes[['timestamp', 'skew_25d', 'skew_chg']].to_string(index=False))
+    print("→ Likely causes: stale quote refresh, news event, or data gap at open/close")
+
+# Session boundary spikes (first bar of each day — always expect a jump)
+skew_df['date'] = skew_df['timestamp'].dt.date
+first_bars = skew_df.groupby('date')['timestamp'].min()
+session_spikes = spikes[spikes['timestamp'].isin(first_bars.values)]
+non_session_spikes = spikes[~spikes['timestamp'].isin(first_bars.values)]
+print(f"\nOf which at session open (expected) : {len(session_spikes)}")
+print(f"Of which intraday (needs review)    : {len(non_session_spikes)}")
+
+===== CELL 44 =====
+# ── 5.5  Plot skew time series ────────────────────────────────
+import matplotlib.pyplot as plt
+
+fig, axes = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
+
+axes[0].plot(skew_df['timestamp'], skew_df['iv_25d_PE'],
+             color='red', lw=0.7, label='25Δ Put IV')
+axes[0].plot(skew_df['timestamp'], skew_df['iv_25d_CE'],
+             color='blue', lw=0.7, label='25Δ Call IV')
+axes[0].set_ylabel('Implied Volatility')
+axes[0].set_title('25-Delta Put IV vs Call IV')
+axes[0].legend()
+axes[0].grid(True, alpha=0.3)
+
+axes[1].plot(skew_df['timestamp'], skew_df['skew_25d'],
+             color='purple', lw=0.7)
+axes[1].axhline(0, color='black', lw=0.8, ls='--')
+axes[1].axhline(skew_valid['skew_25d'].median(), color='orange',
+                lw=1, ls='--', label=f"Median={skew_valid['skew_25d'].median():.3f}")
+axes[1].set_ylabel('25Δ Skew (Put IV − Call IV)')
+axes[1].set_title('25-Delta Skew Time Series')
+axes[1].legend()
+axes[1].grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.savefig('skew_timeseries.png', dpi=100, bbox_inches='tight')
+plt.show()
+print(f"\n✓ skew_df ready for Section 6")
+print(f"  Shape: {skew_df.shape}")
+

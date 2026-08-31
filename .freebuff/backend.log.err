@@ -1,0 +1,7 @@
+INFO:     Will watch for changes in these directories: ['D:\\Crossseas Capital\\CCSPL_CANDIDATE_TEST\\CCSPL_CANDIDATE_TEST']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [31848] using StatReload
+INFO:     Started server process [34408]
+INFO:     Waiting for application startup.
+INFO:src.api.server:Database initialized
+INFO:     Application startup complete.

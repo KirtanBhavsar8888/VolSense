@@ -1,0 +1,621 @@
+[
+  {
+    "case_id": "case_001_normal_liquid",
+    "description": "Normal liquid option chain, mid-session, Nifty ATM",
+    "data_file": null,
+    "chain_snippet": {
+      "timestamp": "2026-08-29 10:30:00",
+      "rows": [
+        {
+          "timestamp": "2026-08-29 10:30:00",
+          "expiry": "2026-09-05",
+          "strike": 16500,
+          "option_type": "CE",
+          "ltp": 125.5,
+          "iv": 0.18,
+          "delta": 0.55,
+          "illiquid": false,
+          "dte": 7
+        },
+        {
+          "timestamp": "2026-08-29 10:30:00",
+          "expiry": "2026-09-05",
+          "strike": 16500,
+          "option_type": "PE",
+          "ltp": 110.2,
+          "iv": 0.19,
+          "delta": -0.45,
+          "illiquid": false,
+          "dte": 7
+        },
+        {
+          "timestamp": "2026-08-29 10:30:00",
+          "expiry": "2026-09-05",
+          "strike": 16400,
+          "option_type": "CE",
+          "ltp": 85.7,
+          "iv": 0.175,
+          "delta": 0.42,
+          "illiquid": false,
+          "dte": 7
+        },
+        {
+          "timestamp": "2026-08-29 10:30:00",
+          "expiry": "2026-09-05",
+          "strike": 16400,
+          "option_type": "PE",
+          "ltp": 72.1,
+          "iv": 0.195,
+          "delta": -0.58,
+          "illiquid": false,
+          "dte": 7
+        }
+      ]
+    },
+    "expected_outputs": {
+      "synthetic_future_ok": true,
+      "skew_computed": true,
+      "skew_sign": "positive",
+      "iv_delta_ok": true
+    },
+    "difficulty": "easy"
+  },
+  {
+    "case_id": "case_002_illiquid_rows",
+    "description": "Chain with illiquid rows flagged; should be rerouted or handled carefully",
+    "data_file": null,
+    "chain_snippet": {
+      "timestamp": "2026-08-29 11:00:00",
+      "rows": [
+        {
+          "timestamp": "2026-08-29 11:00:00",
+          "expiry": "2026-09-05",
+          "strike": 16500,
+          "option_type": "CE",
+          "ltp": 128.0,
+          "iv": 0.18,
+          "delta": 0.55,
+          "illiquid": true,
+          "dte": 7
+        },
+        {
+          "timestamp": "2026-08-29 11:00:00",
+          "expiry": "2026-09-05",
+          "strike": 16500,
+          "option_type": "PE",
+          "ltp": 112.5,
+          "iv": 0.19,
+          "delta": -0.45,
+          "illiquid": true,
+          "dte": 7
+        }
+      ]
+    },
+    "expected_outputs": {
+      "sanity_check_pass": false,
+      "reroute_status": "fail",
+      "reason_contains": "illiquid"
+    },
+    "difficulty": "hard"
+  },
+  {
+    "case_id": "case_003_near_expiry",
+    "description": "Near-expiry (DTE=1) rows; should flag edge-case instability",
+    "data_file": null,
+    "chain_snippet": {
+      "timestamp": "2026-08-29 15:30:00",
+      "rows": [
+        {
+          "timestamp": "2026-08-29 15:30:00",
+          "expiry": "2026-08-30",
+          "strike": 16500,
+          "option_type": "CE",
+          "ltp": 8.2,
+          "iv": 0.20,
+          "delta": 0.30,
+          "illiquid": false,
+          "dte": 1
+        },
+        {
+          "timestamp": "2026-08-29 15:30:00",
+          "expiry": "2026-08-30",
+          "strike": 16500,
+          "option_type": "PE",
+          "ltp": 5.2,
+          "iv": 0.22,
+          "delta": -0.30,
+          "illiquid": false,
+          "dte": 1
+        },
+        {
+          "timestamp": "2026-08-29 15:30:00",
+          "expiry": "2026-08-30",
+          "strike": 16550,
+          "option_type": "CE",
+          "ltp": 15.2,
+          "iv": 0.22,
+          "delta": 0.20,
+          "illiquid": false,
+          "dte": 1
+        },
+        {
+          "timestamp": "2026-08-29 15:30:00",
+          "expiry": "2026-08-30",
+          "strike": 16550,
+          "option_type": "PE",
+          "ltp": 8.5,
+          "iv": 0.24,
+          "delta": -0.20,
+          "illiquid": false,
+          "dte": 1
+        }
+      ]
+    },
+    "expected_outputs": {
+      "sanity_check_pass": true,
+      "dte_valid": true,
+      "skew_computed": true
+    },
+    "difficulty": "medium"
+  },
+  {
+    "case_id": "case_004_high_skew",
+    "description": "High skew scenario: put IV >> call IV (vol smile)",
+    "data_file": null,
+    "chain_snippet": {
+      "timestamp": "2026-08-29 10:45:00",
+      "rows": [
+        {
+          "timestamp": "2026-08-29 10:45:00",
+          "expiry": "2026-09-05",
+          "strike": 16300,
+          "option_type": "CE",
+          "ltp": 45.0,
+          "iv": 0.15,
+          "delta": 0.25,
+          "illiquid": false,
+          "dte": 7
+        },
+        {
+          "timestamp": "2026-08-29 10:45:00",
+          "expiry": "2026-09-05",
+          "strike": 16300,
+          "option_type": "PE",
+          "ltp": 95.5,
+          "iv": 0.32,
+          "delta": -0.75,
+          "illiquid": false,
+          "dte": 7
+        },
+        {
+          "timestamp": "2026-08-29 10:45:00",
+          "expiry": "2026-09-05",
+          "strike": 16600,
+          "option_type": "CE",
+          "ltp": 95.5,
+          "iv": 0.32,
+          "delta": 0.75,
+          "illiquid": false,
+          "dte": 7
+        },
+        {
+          "timestamp": "2026-08-29 10:45:00",
+          "expiry": "2026-09-05",
+          "strike": 16600,
+          "option_type": "PE",
+          "ltp": 45.0,
+          "iv": 0.15,
+          "delta": -0.25,
+          "illiquid": false,
+          "dte": 7
+        }
+      ]
+    },
+    "expected_outputs": {
+      "skew_computed": true,
+      "skew_sign": "negative",
+      "skew_magnitude_gt": 0.10
+    },
+    "difficulty": "medium"
+  },
+  {
+    "case_id": "case_005_zero_skew",
+    "description": "Minimal skew: call IV ≈ put IV",
+    "data_file": null,
+    "chain_snippet": {
+      "timestamp": "2026-08-29 12:00:00",
+      "rows": [
+        {
+          "timestamp": "2026-08-29 12:00:00",
+          "expiry": "2026-09-12",
+          "strike": 16400,
+          "option_type": "CE",
+          "ltp": 140.0,
+          "iv": 0.18,
+          "delta": 0.30,
+          "illiquid": false,
+          "dte": 14
+        },
+        {
+          "timestamp": "2026-08-29 12:00:00",
+          "expiry": "2026-09-12",
+          "strike": 16400,
+          "option_type": "PE",
+          "ltp": 125.0,
+          "iv": 0.18,
+          "delta": -0.30,
+          "illiquid": false,
+          "dte": 14
+        },
+        {
+          "timestamp": "2026-08-29 12:00:00",
+          "expiry": "2026-09-12",
+          "strike": 16500,
+          "option_type": "CE",
+          "ltp": 200.0,
+          "iv": 0.18,
+          "delta": 0.20,
+          "illiquid": false,
+          "dte": 14
+        },
+        {
+          "timestamp": "2026-08-29 12:00:00",
+          "expiry": "2026-09-12",
+          "strike": 16500,
+          "option_type": "PE",
+          "ltp": 185.0,
+          "iv": 0.18,
+          "delta": -0.20,
+          "illiquid": false,
+          "dte": 14
+        }
+      ]
+    },
+    "expected_outputs": {
+      "skew_computed": true,
+      "skew_magnitude_lt": 0.02
+    },
+    "difficulty": "easy"
+  },
+  {
+    "case_id": "case_006_multi_expiry",
+    "description": "Multiple expirations: weekly and monthly",
+    "data_file": null,
+    "chain_snippet": {
+      "timestamp": "2026-08-29 09:30:00",
+      "rows": [
+        {
+          "timestamp": "2026-08-29 09:30:00",
+          "expiry": "2026-09-05",
+          "strike": 16500,
+          "option_type": "CE",
+          "ltp": 125.0,
+          "iv": 0.18,
+          "delta": 0.55,
+          "illiquid": false,
+          "dte": 7
+        },
+        {
+          "timestamp": "2026-08-29 09:30:00",
+          "expiry": "2026-09-05",
+          "strike": 16500,
+          "option_type": "PE",
+          "ltp": 110.0,
+          "iv": 0.19,
+          "delta": -0.45,
+          "illiquid": false,
+          "dte": 7
+        },
+        {
+          "timestamp": "2026-08-29 09:30:00",
+          "expiry": "2026-09-26",
+          "strike": 16500,
+          "option_type": "CE",
+          "ltp": 300.0,
+          "iv": 0.16,
+          "delta": 0.60,
+          "illiquid": false,
+          "dte": 28
+        },
+        {
+          "timestamp": "2026-08-29 09:30:00",
+          "expiry": "2026-09-26",
+          "strike": 16500,
+          "option_type": "PE",
+          "ltp": 250.0,
+          "iv": 0.17,
+          "delta": -0.40,
+          "illiquid": false,
+          "dte": 28
+        }
+      ]
+    },
+    "expected_outputs": {
+      "synthetic_future_ok": true,
+      "expiry_count": 2,
+      "skew_computed": true
+    },
+    "difficulty": "medium"
+  },
+  {
+    "case_id": "case_007_absurd_price",
+    "description": "Option with absurd price (outlier); should be flagged",
+    "data_file": null,
+    "chain_snippet": {
+      "timestamp": "2026-08-29 13:15:00",
+      "rows": [
+        {
+          "timestamp": "2026-08-29 13:15:00",
+          "expiry": "2026-09-05",
+          "strike": 16500,
+          "option_type": "CE",
+          "ltp": 99999.0,
+          "iv": 0.18,
+          "delta": 0.55,
+          "illiquid": false,
+          "dte": 7
+        },
+        {
+          "timestamp": "2026-08-29 13:15:00",
+          "expiry": "2026-09-05",
+          "strike": 16500,
+          "option_type": "PE",
+          "ltp": 110.0,
+          "iv": 0.19,
+          "delta": -0.45,
+          "illiquid": false,
+          "dte": 7
+        }
+      ]
+    },
+    "expected_outputs": {
+      "sanity_check_pass": false,
+      "reroute_status": "fail",
+      "reason_contains": "absurd"
+    },
+    "difficulty": "hard"
+  },
+  {
+    "case_id": "case_008_low_dte_high_skew",
+    "description": "Low DTE (2 days) with elevated skew; realistic stress case",
+    "data_file": null,
+    "chain_snippet": {
+      "timestamp": "2026-08-29 14:00:00",
+      "rows": [
+        {
+          "timestamp": "2026-08-29 14:00:00",
+          "expiry": "2026-08-31",
+          "strike": 16450,
+          "option_type": "CE",
+          "ltp": 45.0,
+          "iv": 0.22,
+          "delta": 0.65,
+          "illiquid": false,
+          "dte": 2
+        },
+        {
+          "timestamp": "2026-08-29 14:00:00",
+          "expiry": "2026-08-31",
+          "strike": 16450,
+          "option_type": "PE",
+          "ltp": 65.0,
+          "iv": 0.28,
+          "delta": -0.35,
+          "illiquid": false,
+          "dte": 2
+        },
+        {
+          "timestamp": "2026-08-29 14:00:00",
+          "expiry": "2026-08-31",
+          "strike": 16400,
+          "option_type": "CE",
+          "ltp": 32.0,
+          "iv": 0.23,
+          "delta": 0.50,
+          "illiquid": false,
+          "dte": 2
+        },
+        {
+          "timestamp": "2026-08-29 14:00:00",
+          "expiry": "2026-08-31",
+          "strike": 16400,
+          "option_type": "PE",
+          "ltp": 48.0,
+          "iv": 0.29,
+          "delta": -0.50,
+          "illiquid": false,
+          "dte": 2
+        }
+      ]
+    },
+    "expected_outputs": {
+      "skew_computed": true,
+      "dte_valid": true,
+      "skew_sign": "negative"
+    },
+    "difficulty": "medium"
+  },
+  {
+    "case_id": "case_009_wide_strike_range",
+    "description": "Large strike range covering deep OTM and ITM",
+    "data_file": null,
+    "chain_snippet": {
+      "timestamp": "2026-08-29 10:00:00",
+      "rows": [
+        {
+          "timestamp": "2026-08-29 10:00:00",
+          "expiry": "2026-09-05",
+          "strike": 16000,
+          "option_type": "PE",
+          "ltp": 5.2,
+          "iv": 0.25,
+          "delta": -0.08,
+          "illiquid": false,
+          "dte": 7
+        },
+        {
+          "timestamp": "2026-08-29 10:00:00",
+          "expiry": "2026-09-05",
+          "strike": 16500,
+          "option_type": "CE",
+          "ltp": 125.0,
+          "iv": 0.18,
+          "delta": 0.55,
+          "illiquid": false,
+          "dte": 7
+        },
+        {
+          "timestamp": "2026-08-29 10:00:00",
+          "expiry": "2026-09-05",
+          "strike": 16500,
+          "option_type": "PE",
+          "ltp": 110.0,
+          "iv": 0.19,
+          "delta": -0.45,
+          "illiquid": false,
+          "dte": 7
+        },
+        {
+          "timestamp": "2026-08-29 10:00:00",
+          "expiry": "2026-09-05",
+          "strike": 17000,
+          "option_type": "CE",
+          "ltp": 5.5,
+          "iv": 0.22,
+          "delta": 0.08,
+          "illiquid": false,
+          "dte": 7
+        }
+      ]
+    },
+    "expected_outputs": {
+      "synthetic_future_ok": true,
+      "interpolation_ok": true,
+      "skew_computed": true
+    },
+    "difficulty": "medium"
+  },
+  {
+    "case_id": "case_010_dte_mismatch_catch",
+    "description": "Row with DTE field mismatched from (expiry - timestamp); should flag",
+    "data_file": null,
+    "chain_snippet": {
+      "timestamp": "2026-08-29 16:00:00",
+      "rows": [
+        {
+          "timestamp": "2026-08-29 16:00:00",
+          "expiry": "2026-09-05",
+          "strike": 16500,
+          "option_type": "CE",
+          "ltp": 120.0,
+          "iv": 0.18,
+          "delta": 0.55,
+          "illiquid": false,
+          "dte": 14
+        },
+        {
+          "timestamp": "2026-08-29 16:00:00",
+          "expiry": "2026-09-05",
+          "strike": 16500,
+          "option_type": "PE",
+          "ltp": 110.0,
+          "iv": 0.19,
+          "delta": -0.45,
+          "illiquid": false,
+          "dte": 14
+        }
+      ]
+    },
+    "expected_outputs": {
+      "sanity_check_pass": false,
+      "reroute_status": "fail",
+      "reason_contains": "DTE"
+    },
+    "difficulty": "hard"
+  },
+  {
+    "case_id": "case_011_baseline_vs_agent",
+    "description": "Standard case for comparing baseline direct-prompt vs tool-using agent",
+    "data_file": null,
+    "chain_snippet": {
+      "timestamp": "2026-08-29 11:30:00",
+      "rows": [
+        {
+          "timestamp": "2026-08-29 11:30:00",
+          "expiry": "2026-09-05",
+          "strike": 16400,
+          "option_type": "CE",
+          "ltp": 88.5,
+          "iv": 0.176,
+          "delta": 0.43,
+          "illiquid": false,
+          "dte": 7
+        },
+        {
+          "timestamp": "2026-08-29 11:30:00",
+          "expiry": "2026-09-05",
+          "strike": 16400,
+          "option_type": "PE",
+          "ltp": 73.2,
+          "iv": 0.194,
+          "delta": -0.57,
+          "illiquid": false,
+          "dte": 7
+        },
+        {
+          "timestamp": "2026-08-29 11:30:00",
+          "expiry": "2026-09-05",
+          "strike": 16500,
+          "option_type": "CE",
+          "ltp": 127.0,
+          "iv": 0.180,
+          "delta": 0.56,
+          "illiquid": false,
+          "dte": 7
+        },
+        {
+          "timestamp": "2026-08-29 11:30:00",
+          "expiry": "2026-09-05",
+          "strike": 16500,
+          "option_type": "PE",
+          "ltp": 111.5,
+          "iv": 0.191,
+          "delta": -0.44,
+          "illiquid": false,
+          "dte": 7
+        },
+        {
+          "timestamp": "2026-08-29 11:30:00",
+          "expiry": "2026-09-05",
+          "strike": 16600,
+          "option_type": "CE",
+          "ltp": 170.0,
+          "iv": 0.182,
+          "delta": 0.67,
+          "illiquid": false,
+          "dte": 7
+        },
+        {
+          "timestamp": "2026-08-29 11:30:00",
+          "expiry": "2026-09-05",
+          "strike": 16600,
+          "option_type": "PE",
+          "ltp": 55.0,
+          "iv": 0.188,
+          "delta": -0.33,
+          "illiquid": false,
+          "dte": 7
+        }
+      ]
+    },
+    "expected_outputs": {
+      "sanity_check_pass": true,
+      "skew_computed": true,
+      "skew_positive": true,
+      "both_agents_run": true,
+      "baseline_completes": true,
+      "agent_completes": true
+    },
+    "difficulty": "easy"
+  }
+]

@@ -1,0 +1,72 @@
+# ─── Python ──────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ─── Environment / Secrets ───────────────────────────────
+.env
+.env.local
+.env.production
+.env.development
+!.env.example
+
+# ─── Node / Frontend ─────────────────────────────────────
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+*.local
+
+# ─── Databases ───────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ─── OS / Editor ─────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# ─── Logs ────────────────────────────────────────────────
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ─── Cache ───────────────────────────────────────────────
+.cache/
+.parcel-cache/
+.eslintcache
+
+# ─── Build artifacts ─────────────────────────────────────
+performance_analysis.png
+skew_timeseries.png
+reports/
+
+# ─── Testing ─────────────────────────────────────────────
+.coverage
+htmlcov/
+coverage/
