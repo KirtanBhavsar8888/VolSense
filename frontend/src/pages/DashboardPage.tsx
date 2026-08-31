@@ -43,7 +43,9 @@ export function DashboardPage() {
     }
     const bars = document.querySelectorAll('[data-animate="bar"]')
     if (bars.length) {
+      // anime.js v4 types don't expose the (el) => string overload for width
       animate(bars, {
+        // @ts-expect-error — anime.js accepts array+fn tuples at runtime
         width: ['0%', (el: HTMLElement) => el.dataset.barWidth ?? '0%'],
         duration: 2400,
         delay: stagger(300, { start: 1500 }),

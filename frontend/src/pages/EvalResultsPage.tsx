@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { ChevronDown, ChevronRight, CheckCircle, XCircle } from 'lucide-react'
-import { animate, stagger } from 'animejs'
+import { animate } from 'animejs'
 
 import { DashboardShell } from '../components/dashboard/DashboardShell'
 import type { EvalCaseResult, EvalCheckResult } from '../types/app'

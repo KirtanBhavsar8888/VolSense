@@ -78,7 +78,7 @@ export async function signUpWithCredentials(email: string, password: string): Pr
   }
 
   // If email confirmation is required, data.session will be null
-  if (!data.session) {
+  if (!data.session || !data.user) {
     throw new Error('Check your email for a confirmation link!')
   }
 
@@ -173,13 +173,15 @@ export async function enrollMFA(): Promise<MFAEnrollment> {
   if (!supabase) throw new Error('Supabase is not configured')
   const { data, error } = await supabase.auth.mfa.enroll({
     factorType: 'totp',
-    friendly_name: 'Google Authenticator',
+    friendlyName: 'Google Authenticator',
   })
   if (error) throw new Error(error.message)
+  // Narrow the union type — we enrolled TOTP so `.totp` exists
+  const totpData = data as { totp: { qr_code: string; secret: string }; id: string }
   return {
-    qrCode: data.totp.qr_code,
-    secret: data.totp.secret,
-    factorId: data.id,
+    qrCode: totpData.totp.qr_code,
+    secret: totpData.totp.secret,
+    factorId: totpData.id,
   }
 }
 

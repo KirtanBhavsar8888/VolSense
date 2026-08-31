@@ -220,7 +220,7 @@ export function ComparisonPage() {
         )}
 
         <div className="space-y-4">
-          {runs.map((run, idx) => (
+          {runs.map((run) => (
             <div key={run.id} data-animate="comp-row" style={{ opacity: 0 }}>
               <ComparisonRow run={run} />
             </div>

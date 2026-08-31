@@ -63,6 +63,7 @@ export function barGrow(
   const els = document.querySelectorAll(selector)
   if (!els.length) return null
   return animate(els, {
+    // @ts-expect-error — anime.js accepts array+fn tuples at runtime
     width: ['0%', (el: HTMLElement) => el.dataset.barWidth ?? '0%'],
     duration: opts?.duration ?? 2400,
     delay: stagger(opts?.staggerMs ?? 300, { start: 200 }),
